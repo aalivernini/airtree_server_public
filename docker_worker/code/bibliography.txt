@@ -1,0 +1,10 @@
+# MLA Convention
+
+Giorgi, Filippo. "A particle dry‐deposition parameterization scheme for use in tracer transport models." Journal of Geophysical Research: Atmospheres 91.D9 (1986): 9794-9806.
+Lawrence, Mark G. "The relationship between relative humidity and the dewpoint temperature in moist air: A simple conversion and applications." Bulletin of the American Meteorological Society 86.2 (2005): 225-234.
+Liu, Jiakai, et al. "Dry deposition of particulate matter at an urban forest, wetland and lake surface in Beijing." Atmospheric Environment 125 (2016): 178-187.
+Schaubroeck, Thomas, et al. "Multilayered modeling of particulate matter removal by a growing forest over time, from plant surface deposition to washoff via rainfall." Environmental science & technology 48.18 (2014): 10785-10794.
+Xiao, Qingfu, and E. Gregory McPherson. "Surface water storage capacity of twenty tree species in Davis, California." Journal of Environmental Quality 45.1 (2016): 188-198.
+Nowak, David J., et al. "Modeled PM2. 5 removal by trees in ten US cities and associated health effects." Environmental pollution 178 (2013): 395-402.
+
+

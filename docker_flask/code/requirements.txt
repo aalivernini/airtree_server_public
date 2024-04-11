@@ -1,0 +1,5 @@
+Flask==2.3.2
+pymongo==4.4.1
+uvicorn==0.27.1
+asgiref==3.8.0
+python-dotenv==1.0.1

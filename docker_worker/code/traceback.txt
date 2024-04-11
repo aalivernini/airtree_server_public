@@ -1,0 +1,37 @@
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.11/site-packages/pudb/__init__.py", line 162, in runscript
+    dbg._runscript(mainpyfile)
+  File "/usr/local/lib/python3.11/site-packages/pudb/debugger.py", line 534, in _runscript
+    self.run(statement)
+  File "/usr/local/lib/python3.11/bdb.py", line 598, in run
+    exec(cmd, globals, locals)
+  File "<string>", line 1, in <module>
+  File "main_xls.py", line 412, in <module>
+    main()
+  File "main_xls.py", line 311, in main
+    prj3 = read_projects()
+           ^^^^^^^^^^^^^^^
+  File "main_xls.py", line 241, in read_projects
+    plr.sum(
+  File "/usr/local/lib/python3.11/site-packages/polars/functions/aggregation/vertical.py", line 300, in sum
+    return F.col(*names).sum()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/polars/functions/col.py", line 287, in __new__
+    return _create_col(name, *more_names)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/polars/functions/col.py", line 42, in _create_col
+    elif is_polars_dtype(name):
+         ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/polars/datatypes/convert.py", line 155, in is_polars_dtype
+    if dtype == Unknown:
+       ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/polars/expr/expr.py", line 162, in __eq__
+    return self._from_pyexpr(self._pyexpr.eq(self._to_pyexpr(other)))
+                                             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/polars/expr/expr.py", line 130, in _to_pyexpr
+    return F.lit(other)._pyexpr
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.11/site-packages/polars/functions/lit.py", line 160, in lit
+    return wrap_expr(plr.lit(item, allow_object))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: could not convert value 'Unknown' as a Literal
