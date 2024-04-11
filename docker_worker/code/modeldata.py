@@ -6,6 +6,46 @@ import numpy as np
 import polars as plr  # type: ignore
 from scipy import integrate
 from soilcalculator import soilcalculator
+from pvlib import location
+from pvlib.tools import sind
+#from pvlib import tools
+#from datetime import datetime
+
+
+
+class SolarGeometry:
+    def __init__(self, project3, atm3):
+        self.project3 = project3
+        self.atm3 = atm3
+
+
+    def insert_solar_geometry(self):
+        atm3 = self.atm3.select('TIMEs').with_columns(
+            dtime =  plr.from_epoch("TIMEs", time_unit="s")
+            )
+        dtime = atm3["dtime"]
+
+        # dtime = datetime.utcfromtimestamp(atm3["dtime"])
+        loc = location.Location(
+            latitude  = self.project3["lat"],
+            longitude = self.project3["lon"],
+            altitude  = self.project3["altitude"],
+        )
+        spos = loc.get_solarposition(dtime)
+        sun_elevation = spos['elevation']
+        sun_elevation[sun_elevation < 0] = 0
+
+        # sun_elevation = np.max(sun_elevation, 0)
+        sun_zenith = 90 - sun_elevation
+
+        sinbeta = sind(sun_elevation)
+        sinbeta[sinbeta < 0.0001] = 0.0001
+        atm3 = self.atm3.with_columns(
+                sun_elevation = sun_elevation.to_numpy(),
+                sun_zenith = sun_zenith.to_numpy(),
+                sinbeta = sinbeta.to_numpy()
+        )
+        return atm3
 
 
 class ModelData:
@@ -163,6 +203,10 @@ class ModelData:
             vpd=esat - atm3['eair_kPa'],
         )
         self.define_layer_properties()
+
+        # DEV
+        solar = SolarGeometry(self.project3, atm3)
+        atm3 = solar.insert_solar_geometry()
         return canopy3, atm3
 
 

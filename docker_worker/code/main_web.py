@@ -8,6 +8,7 @@ from airtree import Airtree
 import numpy as np
 import time, datetime
 import dotenv
+from copy import deepcopy
 
 
 CONFIG = dotenv.dotenv_values('.env')
@@ -219,7 +220,6 @@ class AirtreeManager:
 
     @staticmethod
     def cleanup_results():
-        print('cleanup_results')
         mdb = MongoDb.get_database()
 
         # clean up private projects that are downloaded
@@ -239,7 +239,6 @@ class AirtreeManager:
         # clean up completed jobs
         status2 = mdb['project_status'].find({'work_status': {'$gte': 4}})
         for st1 in status2:
-            print(st1)
             collection = mdb['job']
             myquery = {
                 "id_user": st1['id_user'],
@@ -401,8 +400,6 @@ class AirtreeManager:
         data2.extend(line2)
         data2.extend(polygon2)
         df = pl.DataFrame(data2)
-        # print('get_project_df')
-        # print(df)
         return df
 
 
@@ -433,7 +430,7 @@ class AirtreeManager:
         for job1 in job2:
             for id_data in job1['canopy']['id']:
                 row = project_df.filter(project_df['id'] == id_data).to_dicts()[0]
-                out1 = job1['result']
+                out1 = deepcopy(job1['result'])
                 out1['id'] = id_data
                 out1['id_species'] = row['id_species']
 
@@ -456,8 +453,7 @@ class AirtreeManager:
                     np_value = np.array(value)
                     out1['time_series'][key] = (np_value * canopy_area).tolist()
                     out1['canopy_area'] = canopy_area
-
-                result2.append(out1)
+                result2.append(deepcopy(out1))
 
         out = {
                 'id_project' : id_project,

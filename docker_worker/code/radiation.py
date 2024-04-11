@@ -1,9 +1,9 @@
 import numpy as np
 import math
-from pvlib import tools
-from datetime import datetime
-from pvlib import location
-from pvlib.tools import sind
+# from pvlib import tools
+# from datetime import datetime
+# from pvlib import location
+# from pvlib.tools import sind
 from sorcery import dict_of
 from typing import Tuple
 
@@ -27,21 +27,25 @@ class Radiation():
         id_toy = self.id_toy
 
         toy1 = atm3["TOY"][id_toy]
-        dtime = datetime.utcfromtimestamp(atm3["TIMEs"][id_toy])
+        # dtime = datetime.utcfromtimestamp(atm3["TIMEs"][id_toy])
 
-        loc = location.Location(
-            latitude=project3["lat"],
-            longitude=project3["lon"],
-            altitude=project3["altitude"],
-        )
-        spos = loc.get_solarposition(dtime)
-        sun_elevation = spos['elevation'].iloc[0]
+        # loc = location.Location(
+        #     latitude=project3["lat"],
+        #     longitude=project3["lon"],
+        #     altitude=project3["altitude"],
+        # )
+        # spos = loc.get_solarposition(dtime)
+        # sun_elevation = spos['elevation'].iloc[0]
 
-        sun_elevation = max(sun_elevation, 0)
-        sun_zenith = 90 - sun_elevation
+        # sun_elevation = max(sun_elevation, 0)
+        # sun_zenith = 90 - sun_elevation
 
-        sinbeta = sind(sun_elevation)
-        sinbeta = max(sinbeta, 0.0001)
+        # sinbeta = sind(sun_elevation)
+        # sinbeta = max(sinbeta, 0.0001)
+        sun_elevation = atm3["sun_elevation"][id_toy]
+        sun_zenith = atm3["sun_zenith"][id_toy]
+        sinbeta = atm3["sinbeta"][id_toy]
+
         radiazione = atm3["SW_rad"]
 
         [clearness_index,
@@ -68,7 +72,8 @@ class Radiation():
         canopy_cumulative_depth  = canopy3['height'] - canopy3['layer_height']
 
         if canopy3.leafangle != -1:
-            G = tools.cosd(canopy3.leafangle)
+            # G = tools.cosd(canopy3.leafangle)
+            G = np.cos(np.deg2rad(canopy3.leafangle))
         else:
         #  for spheric distribution
             G = np.ones(len(sinbeta)) * 0.5;
