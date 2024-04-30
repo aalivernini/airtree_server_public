@@ -9,6 +9,6 @@ RUN apt-get install -y --no-install-recommends python3-pip
 
 WORKDIR /app
 RUN pip3 install -r requirements.txt
-CMD ["uvicorn", "airtree_server:wsgi", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "airtree_server:app", "--host", "0.0.0.0", "--port", "5000"]
 
 

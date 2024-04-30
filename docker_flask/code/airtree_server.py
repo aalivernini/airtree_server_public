@@ -1,23 +1,37 @@
-import flask
-from flask import Flask, request, jsonify, stream_with_context
-import gzip
 import json
-from pymongo import MongoClient
+import time
+import datetime
 from urllib.request import urlopen
-from asgiref.wsgi import WsgiToAsgi
-import time, datetime
+from functools import lru_cache
+import gzip
 import dotenv
+import streaming_form_data as sfd
+import pymongo
+import pydantic
+from pydantic_settings import BaseSettings
+from starlette.requests import ClientDisconnect
+from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Request, HTTPException, status
+from models import FromUser
+
+MAX_FILE_SIZE = 1024 * 1024 * 1024 * 4  # = 4GB
+MAX_REQUEST_BODY_SIZE = MAX_FILE_SIZE + 1024
+
+app = FastAPI()
 
 
 # ----------------------------------------------------------------------------
-# .env data manager
+# .ENV DATA MANAGER
+
 class AirWebData:
     def __init__(self):
         config         = dotenv.dotenv_values('.env')
         mongo_user     = config['mongo_user']
         mongo_password = config['mongo_pass']
         self._air_key  = config['AIRTREE_KEY']
-        self._db_connection = f"mongodb://{mongo_user}:{mongo_password}@dbmongo.airtree:27017/"
+        self._db_connection = (
+            f"mongodb://{mongo_user}:{mongo_password}@dbmongo.airtree:27017/"
+        )
 
     @property
     def air_key(self):
@@ -27,185 +41,184 @@ class AirWebData:
     def db_connection(self):
         return self._db_connection
 
-air = AirWebData()
 
 # ----------------------------------------------------------------------------
-VERSION = 3
-app = Flask(__name__)
-app.config['db_connection'] = air.db_connection
-app.config['air_key'] = air.air_key
+# SETTINGS
+
+class Settings(BaseSettings):
+    db_connection: str
+    air_key: str
+
+
+@lru_cache
+def get_settings():
+    air = AirWebData()
+    settings = Settings(
+        db_connection = air.db_connection,
+        air_key       = air.air_key
+    )
+    return settings
+
 
 # ----------------------------------------------------------------------------
 # MONGODB
+
 class MongoDb:
     @staticmethod
     def get_database():
-        connection_string = app.config['db_connection']
-        client = MongoClient(connection_string)
+        settings = get_settings()
+        connection_string = settings.db_connection
+        client = pymongo.MongoClient(
+            connection_string,
+            serverSelectionTimeoutMS=300
+        )
         mdb = client['airtree']
         return mdb
 
     @staticmethod
     def insert_data(collection, data):
         collection.insert_one(data)
+
+    @staticmethod
+    def insert_internal_log(msg: str):
+        mdb = MongoDb.get_database()
+        client = mdb['internal_log']
+        data = {
+            "time": datetime.datetime.now(tz=datetime.timezone.utc),
+            "log":           msg
+        }
+        client.insert_one(data)
+
+    @staticmethod
+    def ping():
+        settings = get_settings()
+        connection_string = settings.db_connection
+        client = pymongo.MongoClient(
+            connection_string,
+            serverSelectionTimeoutMS=300
+        )
+        try:
+            client.admin.command('ping')
+        except pymongo.errors.ServerSelectionTimeoutError:
+            print("Server not available")
+
+
 # ----------------------------------------------------------------------------
-
-
-logger = None
-
-
+# UTILS
 
 def get_time_now_posix():
     d = datetime.datetime.now()
     return int(time.mktime(d.timetuple()))
-
-def get_altitude(lat, lon):
-    'get altitude from opentopodata'
-    url = "https://api.opentopodata.org/v1/test-dataset?locations={lat},{lon}".format(lat=lat, lon=lon)
-    response = urlopen(url)
-    data_json = json.loads(response.read())
-    altitude = data_json['results'][0]['elevation']
-    return altitude
-
-@app.route('/ping', methods=['GET'])
-def ping():
-    print(app.config['air_key'], flush=True)
-    result = {
-            'api_version': VERSION,
-            'service': 'ping',
-            'isOK': True,
-            'error': {
-                'coderr': 0,
-                'deserr': ""
-                }
-            }
-    return jsonify(result)
-
-
-@app.route('/set_delivered', methods=['PATCH'])
-def set_delivered():
-    api_key = request.args.get('api_key', type = str)
-    if api_key != app.config['air_key']:
-        return "wrong api key"
-    id_project = request.args.get('id_project', type = str)
-    id_user = request.args.get('id_user', type = str)
-    mdb        = MongoDb.get_database()
-    collection = mdb['project_status']
-    collection.update_one({
-        'id_user': id_user,
-        'id_project': id_project,
-        }, {'$set': {'work_status': 5}})
-    result = {
-            'isOK': True,
-            'error': {
-                'coderr': 0,
-                'deserr': ""
-                }
-            }
-    print("update_project_status")
-    return jsonify(result)
-
-
-
-@app.route('/get_settings', methods=['GET'])
-def get_settings():
-    api_key = request.args.get('api_key', type = str)
-    if api_key != app.config['air_key']:
-        return "wrong api key"
-    mdb        = MongoDb.get_database()
-    collection = mdb['settings']
-
-    result_a = collection.find_one({})
-    result_a.pop('_id', None)
-
-    if result_a:
-        result = json.dumps(result_a)
-        return result
-
-
-# todo: implement user id
-@app.route('/get_work_status', methods=['GET'])
-def get_work_status():
-    api_key = request.args.get('api_key', type = str)
-    if api_key != app.config['air_key']:
-        return "-1"
-    id_project = request.args.get('id_project', type = str)
-    mdb        = MongoDb.get_database()
-    collection = mdb['project_status']
-    status     = -1  # default error code
-    try:
-        result_a = collection.find_one({'id_project': id_project})
-        if result_a:
-            print('res_a ok')
-            result_b = result_a['work_status']
-            if result_b:
-                print('res_b ok')
-                status = result_b
-    except:
-        pass
-    return str(status)
-
 
 
 def stream_generator(data):
     size = len(data)
     chunk_size = 4096
     for i in range(0, size, chunk_size):
-        yield data[i:i+chunk_size]
+        yield data[i:i + chunk_size]
 
 
-# todo: implement user id
-@app.route('/get_result', methods=['GET'])
-def get_result():
-    print("getting_result")
-    api_key = request.args.get('api_key', type = str)
-    if api_key != app.config['air_key']:
-        return "wrong api key"
-    id_user = request.args.get('id_user', type = str)
-    id_project = request.args.get('id_project', type = str)
-
-    # check if results are available
-    mdb        = MongoDb.get_database()
-    collection = mdb['to_user']
-    status     = -1  # default error code
-    result_a = collection.find_one({
-        'id_user': id_user,
-        'id_project': id_project,
-    })
-    if not result_a:
-        return str(status)
-    result_a.pop('_id', None)
-    result_b = json.dumps(result_a)
-    result_c = gzip.compress(result_b.encode('utf-8'))
-    print("responding with results")
-    return app.response_class(stream_generator(result_c), mimetype='application/gzip')
+def get_altitude(lat, lon):
+    'get altitude from opentopodata'
+    # ------------------------------
+    url = f"https://api.opentopodata.org/v1/test-dataset?locations={lat},{lon}"
+    with urlopen(url) as response:
+        data_json = json.loads(response.read())
+    altitude = data_json['results'][0]['elevation']
+    return altitude
 
 
-# TODO
-# rapid conformity check of input before inserting in db
-@app.route('/post_project', methods=['POST'])
-def post_project():
-    api_key = request.args.get('api_key', type = str)
-    if not api_key:
-        return "no api key"
-    if api_key != app.config['air_key']:
-        return "wrong api key"
-    data = bytes()
-    chunk_size = 4096
-    while True:
-        chunk = request.input_stream.read(chunk_size)
-        data += chunk
-        if len(chunk) == 0:
-            break
+# ----------------------------------------------------------------------------
+class MaxBodySizeException(Exception):
+    def __init__(self, body_len: str):
+        self.body_len = body_len
+
+
+class MaxBodySizeValidator:
+    def __init__(self, max_size: int):
+        self.body_len = 0
+        self.max_size = max_size
+
+    def __call__(self, chunk: bytes):
+        self.body_len += len(chunk)
+        if self.body_len > self.max_size:
+            raise MaxBodySizeException(body_len=str(self.body_len))
+
+
+def err_upload_project(exc: Exception):
     try:
-        data3 = json.loads(gzip.decompress(data))
+        raise exc
+    except ClientDisconnect:
+        print("Client Disconnected")
+    except MaxBodySizeException:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail='Maximum request body size limit'
+        )
+    # except sfd.validators.ValidationError:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+    #         detail=f'Maximum file size limit ({MAX_FILE_SIZE} bytes) exceeded'
+    #     )
+    except pydantic.ValidationError:
+        raise HTTPException(
+            status_code = 422,
+            detail      = "Item not validated"
+        )
+    except Exception as err:
+        raise HTTPException(
+            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail      = f'Error uploading the file: {err}'
+        )
+
+
+def check_api(api_key: str):
+    settings = get_settings()
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Airtree API key is missing'
+        )
+    if api_key != settings.air_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Airtree API key is wrong'
+        )
+
+
+def err_db(exc: Exception):
+    try:
+        raise exc
+    except pymongo.errors.ServerSelectionTimeoutError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'error server db is down: {err}'
+        )
+
+    except Exception as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f'error server db: {err}'
+        )
+
+
+def db_upload_project(data3: dict):
+    try:
         data3['id_project'] = data3['project']['id_project']
         data3['id_user'] = data3['project']['id_user']
-        data3['project']['altitude'] = get_altitude(data3['project']['lat'], data3['project']['lon'])
+        data3['project']['altitude'] = get_altitude(
+            data3['project']['lat'],
+            data3['project']['lon']
+        )
 
         # delete any previous project data with same id
         mdb = MongoDb.get_database()
-        collection2 = [mdb['project_status'], mdb['from_user'], mdb['to_user'], mdb['job']]
+        collection2 = [
+            mdb['project_status'],
+            mdb['from_user'],
+            mdb['to_user'],
+            mdb['job'],
+        ]
         for collection in collection2:
             collection.delete_many({
                 'id_user': data3['id_user'],
@@ -218,21 +231,180 @@ def post_project():
 
         # insert project status (used by workers and for app update)
         collection = mdb['project_status']
-        status = {
-                'id_user'  : data3['id_user'],
-                'id_project'  : data3['id_project'],
-                'private_project' : data3['project']['private_project'],
-                'post_time' :  get_time_now_posix(),
-                'work_status' : 0  # 0 : in queue, 1 : processing, 2 : done
-                }
-        MongoDb.insert_data(collection, status)
-        return "upload ok"
+        air_status = {
+            'id_user':         data3['id_user'],
+            'id_project':      data3['id_project'],
+            'private_project': data3['project']['private_project'],
+            'post_time':       get_time_now_posix(),
+            'work_status':     0  # 0: in queue, 1: processing, 2: done
+        }
+        MongoDb.insert_data(collection, air_status)
+    except Exception as exc:
+        err_db(exc)
 
-    except Exception as e:
-        return "upload error: " + str(e)
 
-wsgi = WsgiToAsgi(app)
+@app.get('/get-settings')
+def get_air_settings(request: Request):
+    api_key = request.query_params['api_key']
+    check_api(api_key)
+    try:
+        mdb        = MongoDb.get_database()
+        collection = mdb['settings']
+
+        result_a = collection.find_one({})
+        result_a.pop('_id', None)
+
+        if result_a:
+            result = json.dumps(result_a)
+            return result
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail='No settings found'
+        )
+    except Exception as exc:
+        err_db(exc)
+
+
+# todo: implement user id
+@app.get('/get-work-status')
+def get_work_status(request: Request):
+    api_key = request.query_params['api_key']
+    check_api(api_key)
+
+    id_user = request.query_params['id_user']
+    id_project = request.query_params['id_project']
+
+    mdb        = MongoDb.get_database()
+    collection = mdb['project_status']
+    air_status = -1  # default error code
+    try:
+        result_a = collection.find_one({
+            'id_user': id_user,
+            'id_project': id_project,
+        })
+        if result_a:
+            print('res_a ok')
+            result_b = result_a['work_status']
+            if result_b:
+                print('res_b ok')
+                air_status = result_b
+    except Exception as exc:
+        err_db(exc)
+    return str(air_status)
+
+
+# TODO: check
+@app.patch('/set-delivered')
+async def set_delivered(request: Request):
+    api_key = request.query_params['api_key']
+    id_project = request.query_params['id_project']
+    id_user = request.query_params['id_user']
+
+    # CHECK API KEY
+    check_api(api_key)
+
+    # CHECK DATA
+    if not id_project or not id_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Missing id_project or id_user'
+        )
+
+    # UPDATE DB
+    try:
+        mdb = MongoDb.get_database()
+        collection = mdb['project_status']
+        collection.update_one(
+            {
+                'id_user': id_user,
+                'id_project': id_project,
+            },
+            {
+                '$set':
+                {'work_status': 5}
+            }
+        )
+    except Exception as exc:
+        err_db(exc)
+
+    # RETURN MSG
+    feedback = {"message": "Successfuly updated"}
+    return feedback
+
+
+# TODO: check
+@app.get('/get-result')
+def get_result(request: Request):
+    api_key = request.query_params['api_key']
+    id_project = request.query_params['id_project']
+    id_user = request.query_params['id_user']
+
+    # CHECK API KEY
+    check_api(api_key)
+
+    # CHECK DATA
+    if not id_project or not id_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Missing id_project or id_user'
+        )
+
+    # CHECK IF RESULTS ARE AVAILABLE
+    mdb        = MongoDb.get_database()
+    collection = mdb['to_user']
+    air_status     = -1  # default error code
+    result_a = collection.find_one({
+        'id_user': id_user,
+        'id_project': id_project,
+    })
+    if not result_a:
+        return str(air_status)
+    result_a.pop('_id', None)
+    result_b = json.dumps(result_a)
+    result_c = gzip.compress(result_b.encode('utf-8'))
+    return StreamingResponse(
+        stream_generator(result_c),
+        media_type='application/gzip'
+    )
+
+
+@app.post('/post-project')
+async def upload_project(request: Request):
+    # CHECK API KEY
+    api_key = request.query_params['api_key']
+    check_api(api_key)
+
+    # PARSE DATA
+    body_validator = MaxBodySizeValidator(MAX_REQUEST_BODY_SIZE)
+    target_file = sfd.targets.ValueTarget()
+    try:
+        parser = sfd.StreamingFormDataParser(headers=request.headers)
+        parser.register('file', target_file)
+
+        async for chunk in request.stream():
+            body_validator(chunk)
+            parser.data_received(chunk)
+
+    except Exception as exc:
+        print(exc)
+        err_upload_project(exc)
+
+    print("File received")
+
+    data_memfile = gzip.decompress(target_file.value).decode()
+    try:
+        prj = FromUser.parse_raw(data_memfile)
+    except Exception as exc:
+        err_upload_project(exc)
+
+    # STORE DATA
+    db_upload_project(prj.dict())
+
+    # RETURN MSG
+    feedback = {"message": "Successfuly uploaded"}
+    return feedback
+
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000)
-
+    import uvicorn
+    uvicorn.run(app, host='127.0.0.1')
