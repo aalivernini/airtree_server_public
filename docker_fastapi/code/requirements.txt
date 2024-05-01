@@ -6,3 +6,4 @@ python-dotenv==1.0.1
 fastapi==0.110.3
 streaming-form-data==1.15.0
 pydantic==2.7.1
+pydantic_settings==2.2.1

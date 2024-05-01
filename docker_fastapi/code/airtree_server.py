@@ -328,7 +328,7 @@ async def set_delivered(request: Request):
         err_db(exc)
 
     # RETURN MSG
-    feedback = {"message": "Successfuly updated"}
+    feedback = {"detail": "Successfuly updated"}
     return feedback
 
 
@@ -395,6 +395,9 @@ async def upload_project(request: Request):
     try:
         prj = FromUser.parse_raw(data_memfile)
     except Exception as exc:
+        print('--------------------')
+        print('data_memfile:', data_memfile)
+        print('--------------------')
         err_upload_project(exc)
 
     # STORE DATA

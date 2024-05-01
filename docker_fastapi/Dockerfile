@@ -1,6 +1,7 @@
 FROM ubuntu:22.04
 
 ADD code/airtree_server.py /app/
+ADD code/models.py /app/
 ADD code/requirements.txt /app/
 ADD code/.env /app/
 RUN chmod +x /app/airtree_server.py

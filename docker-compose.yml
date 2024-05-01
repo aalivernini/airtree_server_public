@@ -46,7 +46,7 @@ services:
         max-file: "2"
 
   airtree-server:
-    build: docker_flask/
+    build: docker_fastapi/
     restart: always
     networks:
       mynet:
