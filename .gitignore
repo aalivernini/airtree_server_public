@@ -154,11 +154,12 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Docker swarm
-compose_swarm.sh
-deploy_swarm.sh
-setup_swarm.txt
-docker-compose_swarm.yml
+# Nginx ssl
+nginx/
+ssl_docker_launch.sh
+ssl_init.sh
+ssl_docker_init.yml
+ssl_docker_nginx.yml
 
 # Python testing
 **/main_xls.py

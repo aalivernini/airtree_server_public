@@ -172,7 +172,7 @@ def err_upload_project(exc: Exception):
         )
 
 
-def check_api(api_key: str):
+def check_api(api_key: str | None):
     settings = get_settings()
     if not api_key:
         raise HTTPException(
@@ -245,7 +245,7 @@ def db_upload_project(data3: dict):
 
 @app.get('/get-settings')
 def get_air_settings(request: Request):
-    api_key = request.query_params['api_key']
+    api_key = request.query_params.get('api_key')
     check_api(api_key)
     try:
         mdb        = MongoDb.get_database()
@@ -265,14 +265,13 @@ def get_air_settings(request: Request):
         err_db(exc)
 
 
-# todo: implement user id
 @app.get('/get-work-status')
 def get_work_status(request: Request):
-    api_key = request.query_params['api_key']
+    api_key = request.query_params.get('api_key')
     check_api(api_key)
 
-    id_user = request.query_params['id_user']
-    id_project = request.query_params['id_project']
+    id_user = request.query_params.get('id_user')
+    id_project = request.query_params.get('id_project')
 
     mdb        = MongoDb.get_database()
     collection = mdb['project_status']
@@ -293,12 +292,11 @@ def get_work_status(request: Request):
     return str(air_status)
 
 
-# TODO: check
 @app.patch('/set-delivered')
 async def set_delivered(request: Request):
-    api_key = request.query_params['api_key']
-    id_project = request.query_params['id_project']
-    id_user = request.query_params['id_user']
+    api_key = request.query_params.get('api_key')
+    id_project = request.query_params.get('id_project')
+    id_user = request.query_params.get('id_user')
 
     # CHECK API KEY
     check_api(api_key)
@@ -335,9 +333,9 @@ async def set_delivered(request: Request):
 # TODO: check
 @app.get('/get-result')
 def get_result(request: Request):
-    api_key = request.query_params['api_key']
-    id_project = request.query_params['id_project']
-    id_user = request.query_params['id_user']
+    api_key = request.query_params.get('api_key')
+    id_project = request.query_params.get('id_project')
+    id_user = request.query_params.get('id_user')
 
     # CHECK API KEY
     check_api(api_key)
@@ -371,7 +369,7 @@ def get_result(request: Request):
 @app.post('/post-project')
 async def upload_project(request: Request):
     # CHECK API KEY
-    api_key = request.query_params['api_key']
+    api_key = request.query_params.get('api_key')
     check_api(api_key)
 
     # PARSE DATA
@@ -410,4 +408,4 @@ async def upload_project(request: Request):
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host='127.0.0.1')
+    uvicorn.run(app, host='127.0.0.1', port=8000)
