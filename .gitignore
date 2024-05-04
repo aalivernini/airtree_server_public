@@ -156,6 +156,7 @@ cython_debug/
 
 # Nginx ssl
 nginx/
+nginx
 ssl_docker_launch.sh
 ssl_init.sh
 ssl_docker_init.yml
